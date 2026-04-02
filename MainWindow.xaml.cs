@@ -565,11 +565,16 @@ namespace VoltageDividerTool
             var btn = sender as Button;
             if (btn == null) return;
             try {
+                string content = btn.Content?.ToString() ?? "";
                 if (currentMode == AppMode.Divider) {
                     if (btn == BtnCalcVin) CalculateVin();
+                    else if (content.StartsWith("Vout")) CalculateVouts();
+                    else if (content.StartsWith("R")) CalculateDividerResistor(btn);
                     else CalculateVouts();
                 } else if (currentMode == AppMode.Parallel) {
-                    CalculateRTotal();
+                    if (btn == BtnCalcRTotal) CalculateRTotal();
+                    else if (content.StartsWith("R")) CalculateParallelResistor(btn);
+                    else CalculateRTotal();
                 } else if (currentMode == AppMode.Regulator) {
                     CalculateRegulator(btn);
                 } else {
@@ -580,45 +585,140 @@ namespace VoltageDividerTool
 
         private void CalculateVouts()
         {
-            if (string.IsNullOrEmpty(InputVin.Text)) return;
-            double vin = double.Parse(InputVin.Text);
+            if (!double.TryParse(InputVin.Text, out double vin)) return;
+            
             double totalR = 0;
-            foreach (var input in dividerResistors) totalR += double.Parse(input.Text);
-            if (totalR == 0) return;
-            double currentSumR = 0;
-            for (int i = dividerResistors.Count - 1; i >= 1; i--) {
-                currentSumR += double.Parse(dividerResistors[i].Text);
-                voutOutputs[i - 1].Text = (vin * (currentSumR / totalR)).ToString("G4");
+            foreach (var input in dividerResistors)
+            {
+                if (double.TryParse(input.Text, out double r)) totalR += r;
+                else return; 
+            }
+
+            if (totalR <= 0) return;
+
+            for (int i = 0; i < voutOutputs.Count; i++)
+            {
+                double rBelow = 0;
+                for (int j = i + 1; j < dividerResistors.Count; j++)
+                {
+                    if (double.TryParse(dividerResistors[j].Text, out double r)) rBelow += r;
+                }
+                voutOutputs[i].Text = (vin * (rBelow / totalR)).ToString("G4");
             }
             UpdateAll();
         }
 
         private void CalculateVin()
         {
-            for (int i = 0; i < voutOutputs.Count; i++) {
-                if (!string.IsNullOrEmpty(voutOutputs[i].Text)) {
-                    double vout = double.Parse(voutOutputs[i].Text);
+            for (int i = 0; i < voutOutputs.Count; i++)
+            {
+                if (double.TryParse(voutOutputs[i].Text, out double vout) && vout > 0)
+                {
                     double totalR = 0;
-                    foreach (var input in dividerResistors) totalR += double.Parse(input.Text);
-                    double sumRBelow = 0;
-                    for (int j = i + 1; j < dividerResistors.Count; j++) sumRBelow += double.Parse(dividerResistors[j].Text);
-                    if (sumRBelow == 0) continue;
-                    InputVin.Text = (vout * (totalR / sumRBelow)).ToString("G4");
+                    double rBelow = 0;
+                    bool allRValid = true;
+
+                    for (int j = 0; j < dividerResistors.Count; j++)
+                    {
+                        if (double.TryParse(dividerResistors[j].Text, out double r))
+                        {
+                            totalR += r;
+                            if (j > i) rBelow += r;
+                        }
+                        else { allRValid = false; break; }
+                    }
+
+                    if (allRValid && rBelow > 0)
+                    {
+                        InputVin.Text = (vout * (totalR / rBelow)).ToString("G4");
+                        UpdateAll();
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void CalculateDividerResistor(Button btn)
+        {
+            if (!double.TryParse(InputVin.Text, out double vin) || vin <= 0) return;
+            int targetIdx = dividerResistors.IndexOf(dividerResistors.FirstOrDefault(r => 
+                (r.Parent as Grid)?.Parent is Grid row && row.Children[0] == btn));
+            
+            if (targetIdx == -1) return;
+
+            double vAbove = (targetIdx == 0) ? vin : 
+                           (double.TryParse(voutOutputs[targetIdx - 1].Text, out double va) ? va : -1);
+            double vBelow = (targetIdx == dividerResistors.Count - 1) ? 0 : 
+                           (double.TryParse(voutOutputs[targetIdx].Text, out double vb) ? vb : -1);
+
+            if (vAbove != -1 && vBelow != -1)
+            {
+                double current = -1;
+                for (int k = 0; k < dividerResistors.Count; k++)
+                {
+                    if (k == targetIdx) continue;
+                    if (double.TryParse(dividerResistors[k].Text, out double rk) && rk > 0)
+                    {
+                        double vkAbove = (k == 0) ? vin : (double.TryParse(voutOutputs[k - 1].Text, out double vka) ? vka : -1);
+                        double vkBelow = (k == dividerResistors.Count - 1) ? 0 : (double.TryParse(voutOutputs[k].Text, out double vkb) ? vkb : -1);
+                        if (vkAbove != -1 && vkBelow != -1 && Math.Abs(vkAbove - vkBelow) > 1e-9)
+                        {
+                            current = (vkAbove - vkBelow) / rk;
+                            break;
+                        }
+                    }
+                }
+
+                if (current > 0)
+                {
+                    dividerResistors[targetIdx].Text = ((vAbove - vBelow) / current).ToString("G4");
                     UpdateAll();
-                    return;
                 }
             }
         }
 
         private void CalculateRTotal()
         {
-            double invTotal = 0; bool valid = true;
-            foreach (var input in parallelResistors) {
-                if (double.TryParse(input.Text, out double r) && r != 0) invTotal += 1.0 / r;
-                else { valid = false; break; }
+            double invTotal = 0;
+            int validCount = 0;
+            foreach (var input in parallelResistors)
+            {
+                if (double.TryParse(input.Text, out double r) && r != 0)
+                {
+                    invTotal += 1.0 / r;
+                    validCount++;
+                }
             }
-            if (valid && invTotal != 0) InputRTotal.Text = (1.0 / invTotal).ToString("G4");
+            if (validCount > 0 && invTotal != 0)
+            {
+                InputRTotal.Text = (1.0 / invTotal).ToString("G4");
+            }
             UpdateAll();
+        }
+
+        private void CalculateParallelResistor(Button btn)
+        {
+            if (!double.TryParse(InputRTotal.Text, out double rt) || rt <= 0) return;
+            
+            int targetIdx = parallelResistors.IndexOf(parallelResistors.FirstOrDefault(r => 
+                (r.Parent as Grid)?.Parent is Grid row && row.Children[0] == btn));
+            
+            if (targetIdx == -1) return;
+
+            double currentInvSum = 0;
+            for (int i = 0; i < parallelResistors.Count; i++)
+            {
+                if (i == targetIdx) continue;
+                if (double.TryParse(parallelResistors[i].Text, out double r) && r > 0) currentInvSum += 1.0 / r;
+                else return; 
+            }
+
+            double targetInv = (1.0 / rt) - currentInvSum;
+            if (targetInv > 1e-12)
+            {
+                parallelResistors[targetIdx].Text = (1.0 / targetInv).ToString("G4");
+                UpdateAll();
+            }
         }
 
         private void CalculateRegulator(Button btn)
