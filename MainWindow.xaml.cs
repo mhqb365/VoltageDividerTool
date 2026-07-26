@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Microsoft.Win32;
 
 namespace VoltageDividerTool
 {
@@ -13,8 +13,8 @@ namespace VoltageDividerTool
     {
         private enum AppMode { Divider, Parallel, Regulator, Vnode, ColorCode, SmdCode }
         private AppMode currentMode = AppMode.Divider;
-        private string currentLang = "vi";
-        private string configPath = "config.txt";
+        private string currentLang = "en";
+        private const string SettingsRegistryPath = @"Software\VoltageDividerTool";
         
         private List<TextBox> dividerResistors = new List<TextBox>();
         private List<TextBox> parallelResistors = new List<TextBox>();
@@ -70,10 +70,10 @@ namespace VoltageDividerTool
         {
             try
             {
-                if (File.Exists(configPath))
+                using (var key = Registry.CurrentUser.OpenSubKey(SettingsRegistryPath))
                 {
-                    string content = File.ReadAllText(configPath);
-                    currentLang = content.Contains("Language=en") ? "en" : "vi";
+                    var language = key?.GetValue("Language") as string;
+                    if (language == "vi" || language == "en") currentLang = language;
                 }
             }
             catch { }
@@ -81,7 +81,14 @@ namespace VoltageDividerTool
 
         private void SaveConfig()
         {
-            try { File.WriteAllText(configPath, $"Language={currentLang}"); } catch { }
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(SettingsRegistryPath))
+                {
+                    key?.SetValue("Language", currentLang);
+                }
+            }
+            catch { }
         }
 
         private void ApplyLanguage()

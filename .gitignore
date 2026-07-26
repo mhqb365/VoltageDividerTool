@@ -1,7 +1,13 @@
 bin
 obj
 dist
+.github
 
 .agent
+.agents
+.codex
+skills
+AGENTS_CODEX.md
+AGENTS.md
 ERRORS.md
 GEMINI.md

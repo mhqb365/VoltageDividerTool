@@ -15,8 +15,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [3/3] Copying files...
-copy /y "bin\Release\net48\VoltageDividerTool.exe" "dist\Phan mem chia ap.exe" > nul
-copy /y "bin\Release\net48\VoltageDividerTool.exe" "dist\Voltage Divider Tool.exe" > nul
+copy /y "bin\Release\net48\Voltage Divider Tool.exe" "dist\Phan mem chia ap.exe" > nul
+copy /y "bin\Release\net48\Voltage Divider Tool.exe" "dist\Voltage Divider Tool.exe" > nul
 
 echo.
 echo ======================================================
