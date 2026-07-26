@@ -14,6 +14,7 @@ namespace VoltageDividerTool
         private enum AppMode { Divider, Parallel, Regulator, Vnode, ColorCode, SmdCode }
         private AppMode currentMode = AppMode.Divider;
         private string currentLang = "en";
+        private string currentTheme = "light";
         private const string SettingsRegistryPath = @"Software\VoltageDividerTool";
         
         private List<TextBox> dividerResistors = new List<TextBox>();
@@ -54,6 +55,7 @@ namespace VoltageDividerTool
         {
             InitializeComponent();
             LoadConfig();
+            ApplyTheme();
             
             // Add default 2 resistors for each mode
             AddResistorRow(AppMode.Divider);
@@ -74,6 +76,9 @@ namespace VoltageDividerTool
                 {
                     var language = key?.GetValue("Language") as string;
                     if (language == "vi" || language == "en") currentLang = language;
+
+                    var theme = key?.GetValue("Theme") as string;
+                    if (theme == "dark" || theme == "light") currentTheme = theme;
                 }
             }
             catch { }
@@ -86,9 +91,63 @@ namespace VoltageDividerTool
                 using (var key = Registry.CurrentUser.CreateSubKey(SettingsRegistryPath))
                 {
                     key?.SetValue("Language", currentLang);
+                    key?.SetValue("Theme", currentTheme);
                 }
             }
             catch { }
+        }
+
+        private void ApplyTheme()
+        {
+            bool isDark = currentTheme == "dark";
+
+            SetBrushColor("BackgroundBrush", isDark ? Color.FromRgb(19, 27, 38) : Color.FromRgb(244, 247, 251));
+            SetBrushColor("CardBrush", isDark ? Color.FromRgb(26, 36, 51) : Color.FromRgb(255, 255, 255));
+            SetBrushColor("AccentBrush", isDark ? Color.FromRgb(255, 155, 66) : Color.FromRgb(230, 106, 34));
+            SetBrushColor("AccentYellowBrush", isDark ? Color.FromRgb(255, 200, 44) : Color.FromRgb(255, 209, 102));
+            SetBrushColor("TextBrush", isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(23, 32, 51));
+            SetBrushColor("SecondaryTextBrush", isDark ? Color.FromRgb(156, 173, 193) : Color.FromRgb(102, 112, 133));
+            SetBrushColor("InputBrush", isDark ? Color.FromRgb(31, 41, 55) : Color.FromRgb(255, 255, 255));
+            SetBrushColor("BorderBrush", isDark ? Color.FromRgb(44, 62, 80) : Color.FromRgb(215, 222, 232));
+            SetBrushColor("SidebarBrush", isDark ? Color.FromRgb(15, 22, 32) : Color.FromRgb(232, 238, 246));
+            SetBrushColor("SelectedBrush", isDark ? Color.FromRgb(28, 36, 47) : Color.FromRgb(221, 230, 242));
+            SetBrushColor("DiagramSurfaceBrush", isDark ? Color.FromRgb(20, 29, 41) : Color.FromRgb(255, 255, 255));
+            SetBrushColor("HoverBrush", isDark ? Color.FromRgb(37, 46, 62) : Color.FromRgb(238, 243, 248));
+            SetBrushColor("PressedBrush", isDark ? Color.FromRgb(21, 32, 43) : Color.FromRgb(228, 236, 245));
+
+            if (TxtThemeIcon != null) TxtThemeIcon.Text = isDark ? "☀" : "☾";
+            if (TxtThemeLabel != null) TxtThemeLabel.Text = isDark ? "LIGHT" : "DARK";
+            UpdateAll();
+        }
+
+        private void SetBrushColor(string key, Color color)
+        {
+            if (!(TryFindResource(key) is SolidColorBrush brush)) return;
+
+            if (brush.IsFrozen)
+            {
+                ReplaceBrushResource(Resources, key, color);
+                ReplaceBrushResource(Application.Current.Resources, key, color);
+                return;
+            }
+
+            brush.Color = color;
+        }
+
+        private bool ReplaceBrushResource(ResourceDictionary resources, string key, Color color)
+        {
+            if (resources.Contains(key))
+            {
+                resources[key] = new SolidColorBrush(color);
+                return true;
+            }
+
+            foreach (var dictionary in resources.MergedDictionaries)
+            {
+                if (ReplaceBrushResource(dictionary, key, color)) return true;
+            }
+
+            return false;
         }
 
         private void ApplyLanguage()
@@ -187,6 +246,14 @@ namespace VoltageDividerTool
             }
         }
 
+        private void ToggleTheme_Click(object sender, RoutedEventArgs e)
+        {
+            currentTheme = currentTheme == "dark" ? "light" : "dark";
+            ApplyTheme();
+            SaveConfig();
+            if (currentMode == AppMode.ColorCode) InitializeColorBandsUI();
+        }
+
         private void BtnGitHub_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -215,44 +282,46 @@ namespace VoltageDividerTool
 
             // Update Sidebar UI
             var secondaryBrush = (Brush)FindResource("SecondaryTextBrush");
+            var selectedBrush = (Brush)FindResource("SelectedBrush");
+            var textBrush = (Brush)FindResource("TextBrush");
             
             bool isDivider = currentMode == AppMode.Divider;
-            BorderModeDivider.Background = isDivider ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-            ((TextBlock)((StackPanel)BorderModeDivider.Child).Children[0]).Foreground = isDivider ? Brushes.White : secondaryBrush;
-            ((TextBlock)((StackPanel)BorderModeDivider.Child).Children[1]).Foreground = isDivider ? Brushes.White : secondaryBrush;
+            BorderModeDivider.Background = isDivider ? selectedBrush : Brushes.Transparent;
+            ((TextBlock)((StackPanel)BorderModeDivider.Child).Children[0]).Foreground = isDivider ? textBrush : secondaryBrush;
+            ((TextBlock)((StackPanel)BorderModeDivider.Child).Children[1]).Foreground = isDivider ? textBrush : secondaryBrush;
 
             bool isParallel = currentMode == AppMode.Parallel;
-            BorderModeParallel.Background = isParallel ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-            ((TextBlock)((StackPanel)BorderModeParallel.Child).Children[0]).Foreground = isParallel ? Brushes.White : secondaryBrush;
-            ((TextBlock)((StackPanel)BorderModeParallel.Child).Children[1]).Foreground = isParallel ? Brushes.White : secondaryBrush;
+            BorderModeParallel.Background = isParallel ? selectedBrush : Brushes.Transparent;
+            ((TextBlock)((StackPanel)BorderModeParallel.Child).Children[0]).Foreground = isParallel ? textBrush : secondaryBrush;
+            ((TextBlock)((StackPanel)BorderModeParallel.Child).Children[1]).Foreground = isParallel ? textBrush : secondaryBrush;
 
             bool isRegulator = currentMode == AppMode.Regulator;
-            BorderModeRegulator.Background = isRegulator ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-            ((TextBlock)((StackPanel)BorderModeRegulator.Child).Children[0]).Foreground = isRegulator ? Brushes.White : secondaryBrush;
-            ((TextBlock)((StackPanel)BorderModeRegulator.Child).Children[1]).Foreground = isRegulator ? Brushes.White : secondaryBrush;
+            BorderModeRegulator.Background = isRegulator ? selectedBrush : Brushes.Transparent;
+            ((TextBlock)((StackPanel)BorderModeRegulator.Child).Children[0]).Foreground = isRegulator ? textBrush : secondaryBrush;
+            ((TextBlock)((StackPanel)BorderModeRegulator.Child).Children[1]).Foreground = isRegulator ? textBrush : secondaryBrush;
 
             bool isVnode = currentMode == AppMode.Vnode;
             if (BorderModeVnode != null)
             {
-                BorderModeVnode.Background = isVnode ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-                ((TextBlock)((StackPanel)BorderModeVnode.Child).Children[0]).Foreground = isVnode ? Brushes.White : secondaryBrush;
-                ((TextBlock)((StackPanel)BorderModeVnode.Child).Children[1]).Foreground = isVnode ? Brushes.White : secondaryBrush;
+                BorderModeVnode.Background = isVnode ? selectedBrush : Brushes.Transparent;
+                ((TextBlock)((StackPanel)BorderModeVnode.Child).Children[0]).Foreground = isVnode ? textBrush : secondaryBrush;
+                ((TextBlock)((StackPanel)BorderModeVnode.Child).Children[1]).Foreground = isVnode ? textBrush : secondaryBrush;
             }
 
             bool isColorMode = currentMode == AppMode.ColorCode;
             if (BorderModeColor != null)
             {
-                BorderModeColor.Background = isColorMode ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-                ((TextBlock)((StackPanel)BorderModeColor.Child).Children[0]).Foreground = isColorMode ? Brushes.White : secondaryBrush;
-                ((TextBlock)((StackPanel)BorderModeColor.Child).Children[1]).Foreground = isColorMode ? Brushes.White : secondaryBrush;
+                BorderModeColor.Background = isColorMode ? selectedBrush : Brushes.Transparent;
+                ((TextBlock)((StackPanel)BorderModeColor.Child).Children[0]).Foreground = isColorMode ? textBrush : secondaryBrush;
+                ((TextBlock)((StackPanel)BorderModeColor.Child).Children[1]).Foreground = isColorMode ? textBrush : secondaryBrush;
             }
 
             bool isSmdMode = currentMode == AppMode.SmdCode;
             if (BorderModeSmd != null)
             {
-                BorderModeSmd.Background = isSmdMode ? new SolidColorBrush(Color.FromRgb(28, 36, 47)) : Brushes.Transparent;
-                ((TextBlock)((StackPanel)BorderModeSmd.Child).Children[0]).Foreground = isSmdMode ? Brushes.White : secondaryBrush;
-                ((TextBlock)((StackPanel)BorderModeSmd.Child).Children[1]).Foreground = isSmdMode ? Brushes.White : secondaryBrush;
+                BorderModeSmd.Background = isSmdMode ? selectedBrush : Brushes.Transparent;
+                ((TextBlock)((StackPanel)BorderModeSmd.Child).Children[0]).Foreground = isSmdMode ? textBrush : secondaryBrush;
+                ((TextBlock)((StackPanel)BorderModeSmd.Child).Children[1]).Foreground = isSmdMode ? textBrush : secondaryBrush;
             }
 
             ApplyLanguage();
@@ -292,7 +361,7 @@ namespace VoltageDividerTool
 
             Button btnRemove = new Button {
                 Content = "", FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                Foreground = new SolidColorBrush(Color.FromRgb(156, 173, 193)), Background = Brushes.Transparent,
+                Foreground = (Brush)FindResource("SecondaryTextBrush"), Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0), FontSize = 14, Cursor = System.Windows.Input.Cursors.Hand,
                 Tag = new object[] { mode, rowGrid }
             };
@@ -472,7 +541,7 @@ namespace VoltageDividerTool
             int n = dividerResistors.Count;
             CircuitCanvas.Height = 100 + (n * 100);
             double x = 100;
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
             var yellowBrush = (Brush)FindResource("AccentYellowBrush");
 
@@ -486,7 +555,7 @@ namespace VoltageDividerTool
             for (int i = 0; i < n; i++)
             {
                 double resistorTop = 80 + (i * 100);
-                Border rBox = new Border { Width = 50, Height = 60, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+                Border rBox = new Border { Width = 50, Height = 60, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
                 Canvas.SetLeft(rBox, 75); Canvas.SetTop(rBox, resistorTop);
                 rBox.Child = new TextBlock { Text = $"R{i + 1}", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
                 CircuitCanvas.Children.Add(rBox);
@@ -525,7 +594,7 @@ namespace VoltageDividerTool
             int n = parallelResistors.Count;
             CircuitCanvas.Height = 100 + (n * 80);
             CircuitCanvas.Width = 250;
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
             var yellowBrush = (Brush)FindResource("AccentYellowBrush");
 
@@ -555,7 +624,7 @@ namespace VoltageDividerTool
                 CircuitCanvas.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = grayBrush, Margin = new Thickness(leftBusX - 3, ry - 3, 0, 0) });
                 CircuitCanvas.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = grayBrush, Margin = new Thickness(rightBusX - 3, ry - 3, 0, 0) });
 
-                Border rBox = new Border { Width = 60, Height = 40, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+                Border rBox = new Border { Width = 60, Height = 40, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
                 Canvas.SetLeft(rBox, centerX - 30); Canvas.SetTop(rBox, ry - 20);
                 rBox.Child = new TextBlock { Text = $"R{i + 1}", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
                 CircuitCanvas.Children.Add(rBox);
@@ -773,7 +842,7 @@ namespace VoltageDividerTool
         {
             CircuitCanvas.Height = 380;
             CircuitCanvas.Width = 380; 
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
             var yellowBrush = (Brush)FindResource("AccentYellowBrush");
 
@@ -784,7 +853,7 @@ namespace VoltageDividerTool
             double pinY = icY + icH / 2;
 
             // IC Body
-            Border icBody = new Border { Width = icW, Height = icH, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(4) };
+            Border icBody = new Border { Width = icW, Height = icH, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(4) };
             Canvas.SetLeft(icBody, centerX - icW / 2); Canvas.SetTop(icBody, icY);
             icBody.Child = new TextBlock { Text = "1117 ADJ", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 14, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(icBody);
@@ -818,7 +887,7 @@ namespace VoltageDividerTool
             CircuitCanvas.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = grayBrush, Margin = new Thickness(centerX - 3.5, adjWireY - 3.5, 0, 0) });
 
             // R1 Box (Balanced size)
-            Border r1Box = new Border { Width = 50, Height = 45, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+            Border r1Box = new Border { Width = 50, Height = 45, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
             Canvas.SetLeft(r1Box, r1X - 25); Canvas.SetTop(r1Box, pinY + 20);
             r1Box.Child = new TextBlock { Text = "R1", Foreground = grayBrush, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(r1Box);
@@ -834,7 +903,7 @@ namespace VoltageDividerTool
             CircuitCanvas.Children.Add(new Line { X1 = centerX, Y1 = adjWireY, X2 = centerX, Y2 = r2TopY, Stroke = grayBrush, StrokeThickness = 3 });
             
             // R2 Box (Matched width with R1)
-            Border r2Box = new Border { Width = 50, Height = 65, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+            Border r2Box = new Border { Width = 50, Height = 65, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
             Canvas.SetLeft(r2Box, centerX - 25); Canvas.SetTop(r2Box, r2TopY);
             r2Box.Child = new TextBlock { Text = "R2", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(r2Box);
@@ -934,7 +1003,7 @@ namespace VoltageDividerTool
         {
             CircuitCanvas.Height = 350;
             CircuitCanvas.Width = 350;
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             var accentBrush = (Brush)FindResource("AccentBrush");
             var yellowBrush = (Brush)FindResource("AccentYellowBrush");
 
@@ -989,7 +1058,7 @@ namespace VoltageDividerTool
 
             // R1 Box
             double r1CenterX = (startX + rEndX) / 2;
-            Border r1Box = new Border { Width = 60, Height = 30, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+            Border r1Box = new Border { Width = 60, Height = 30, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
             Canvas.SetLeft(r1Box, r1CenterX - 30); Canvas.SetTop(r1Box, y1 - 15);
             r1Box.Child = new TextBlock { Text = "R1", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(r1Box);
@@ -1001,7 +1070,7 @@ namespace VoltageDividerTool
 
             // R2 Box
             double r2CenterX = (startX + rEndX) / 2;
-            Border r2Box = new Border { Width = 60, Height = 30, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+            Border r2Box = new Border { Width = 60, Height = 30, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
             Canvas.SetLeft(r2Box, r2CenterX - 30); Canvas.SetTop(r2Box, y2 - 15);
             r2Box.Child = new TextBlock { Text = "R2", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(r2Box);
@@ -1013,7 +1082,7 @@ namespace VoltageDividerTool
 
             // R3 Box (Vertical)
             double r3CenterY = (midY + groundY) / 2;
-            Border r3Box = new Border { Width = 40, Height = 50, Background = new SolidColorBrush(Color.FromRgb(38, 49, 66)), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
+            Border r3Box = new Border { Width = 40, Height = 50, Background = (Brush)FindResource("HoverBrush"), BorderBrush = grayBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2) };
             Canvas.SetLeft(r3Box, v3X - 20); Canvas.SetTop(r3Box, r3CenterY - 25);
             r3Box.Child = new TextBlock { Text = "R3", Foreground = grayBrush, FontWeight = FontWeights.Bold, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             CircuitCanvas.Children.Add(r3Box);
@@ -1076,7 +1145,7 @@ namespace VoltageDividerTool
                 TextBlock header = new TextBlock 
                 { 
                     Text = currentLang == "en" ? $"Band {bandIdx + 1}" : $"Vòng {bandIdx + 1}", 
-                    Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10), FontSize = 12 
+                    Foreground = (Brush)FindResource("TextBrush"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10), FontSize = 12 
                 };
                 colPanel.Children.Add(header);
 
@@ -1209,7 +1278,7 @@ namespace VoltageDividerTool
             int numBands = is6Band ? 6 : (is5Band ? 5 : 4);
             
             // Draw Wire
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             CircuitCanvas.Children.Add(new Line { X1 = 20, Y1 = 60, X2 = 330, Y2 = 60, Stroke = grayBrush, StrokeThickness = 3 });
 
             // Draw Resistor Body
@@ -1298,8 +1367,7 @@ namespace VoltageDividerTool
             CircuitCanvas.Height = 200;
             CircuitCanvas.Width = 350;
 
-            var grayBrush = new SolidColorBrush(Color.FromRgb(156, 173, 193));
-            var bgBrush = new SolidColorBrush(Color.FromRgb(28, 36, 47));
+            var grayBrush = (Brush)FindResource("SecondaryTextBrush");
             
             // SMD Body (Black rectangle)
             Border body = new Border
