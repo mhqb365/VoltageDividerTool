@@ -5,6 +5,7 @@
     <TargetFramework>net48</TargetFramework>
     <UseWPF>true</UseWPF>
     <AssemblyName>Voltage Divider Tool</AssemblyName>
+    <VersionPrefix>1.0.1</VersionPrefix>
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <StartupObject />
   </PropertyGroup>

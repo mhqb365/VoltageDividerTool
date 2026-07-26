@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -54,6 +55,7 @@ namespace VoltageDividerTool
         public MainWindow()
         {
             InitializeComponent();
+            Title = $"Voltage Divider Tool {GetAppVersionText()}";
             LoadConfig();
             ApplyTheme();
             
@@ -66,6 +68,12 @@ namespace VoltageDividerTool
             ApplyLanguage();
             InitializeColorBandsUI();
             UpdateAll();
+        }
+
+        private string GetAppVersionText()
+        {
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            return version == null ? "v1.0.0" : $"v{version.Major}.{version.Minor}.{version.Build}";
         }
 
         private void LoadConfig()
