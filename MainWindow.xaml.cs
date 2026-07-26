@@ -1,12 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Reflection;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using Microsoft.Win32;
+using IOPath = System.IO.Path;
 
 namespace VoltageDividerTool
 {
@@ -17,6 +24,7 @@ namespace VoltageDividerTool
         private string currentLang = "en";
         private string currentTheme = "light";
         private const string SettingsRegistryPath = @"Software\VoltageDividerTool";
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/mhqb365/VoltageDividerTool/releases/latest";
         
         private List<TextBox> dividerResistors = new List<TextBox>();
         private List<TextBox> parallelResistors = new List<TextBox>();
@@ -68,12 +76,116 @@ namespace VoltageDividerTool
             ApplyLanguage();
             InitializeColorBandsUI();
             UpdateAll();
+            Loaded += async (s, e) => await CheckForUpdatesAsync();
         }
 
         private string GetAppVersionText()
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             return version == null ? "v1.0.0" : $"v{version.Major}.{version.Minor}.{version.Build}";
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+
+                using (var client = new WebClient())
+                {
+                    client.Headers.Add(HttpRequestHeader.UserAgent, "VoltageDividerTool");
+                    string releaseJson = await client.DownloadStringTaskAsync(LatestReleaseApiUrl);
+                    string tag = MatchJsonString(releaseJson, "tag_name");
+                    string zipUrl = MatchFirstZipAssetUrl(releaseJson);
+
+                    if (!TryParseVersion(tag, out var latestVersion) || string.IsNullOrEmpty(zipUrl)) return;
+
+                    var currentVersion = GetCurrentThreePartVersion();
+                    if (currentVersion == null || latestVersion <= currentVersion) return;
+
+                    string updateRoot = IOPath.Combine(IOPath.GetTempPath(), "VoltageDividerToolUpdate");
+                    string zipPath = IOPath.Combine(updateRoot, "update.zip");
+                    string extractPath = IOPath.Combine(updateRoot, "extract");
+
+                    if (Directory.Exists(updateRoot)) Directory.Delete(updateRoot, true);
+                    Directory.CreateDirectory(extractPath);
+                    await client.DownloadFileTaskAsync(zipUrl, zipPath);
+                    ZipFile.ExtractToDirectory(zipPath, extractPath);
+
+                    StartUpdaterAndExit(extractPath);
+                }
+            }
+            catch
+            {
+                // Update checks are best-effort so the calculator still opens offline or if GitHub is unavailable.
+            }
+        }
+
+        private string MatchJsonString(string json, string propertyName)
+        {
+            var match = Regex.Match(json, $"\"{propertyName}\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"");
+            return match.Success ? Regex.Unescape(match.Groups["value"].Value) : "";
+        }
+
+        private string MatchFirstZipAssetUrl(string json)
+        {
+            foreach (Match match in Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"(?<url>(?:\\\\.|[^\"])*)\""))
+            {
+                string url = Regex.Unescape(match.Groups["url"].Value);
+                if (url.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return url;
+            }
+
+            return "";
+        }
+
+        private bool TryParseVersion(string value, out Version version)
+        {
+            version = null;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            string normalized = value.Trim().TrimStart('v', 'V');
+            var match = Regex.Match(normalized, @"^\d+\.\d+\.\d+");
+            return match.Success && Version.TryParse(match.Value, out version);
+        }
+
+        private Version GetCurrentThreePartVersion()
+        {
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            return version == null ? null : new Version(version.Major, version.Minor, version.Build);
+        }
+
+        private void StartUpdaterAndExit(string extractPath)
+        {
+            string currentExePath = Assembly.GetExecutingAssembly().Location;
+            string currentExeName = IOPath.GetFileName(currentExePath);
+            string appDirectory = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(IOPath.DirectorySeparatorChar);
+            string sourceExe = Directory.GetFiles(extractPath, currentExeName, SearchOption.AllDirectories).FirstOrDefault()
+                ?? Directory.GetFiles(extractPath, "*.exe", SearchOption.AllDirectories).FirstOrDefault();
+
+            if (string.IsNullOrEmpty(sourceExe)) return;
+
+            string sourceDirectory = IOPath.GetDirectoryName(sourceExe);
+            string updaterPath = IOPath.Combine(IOPath.GetTempPath(), "VoltageDividerToolUpdater.bat");
+            string script = $@"@echo off
+timeout /t 1 /nobreak > nul
+:retry
+xcopy ""{sourceDirectory}"" ""{appDirectory}"" /E /I /Y > nul
+if errorlevel 1 (
+    timeout /t 1 /nobreak > nul
+    goto retry
+)
+start """" ""{currentExePath}""
+del ""%~f0""
+";
+            File.WriteAllText(updaterPath, script);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = updaterPath,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                UseShellExecute = true
+            });
+            Application.Current.Shutdown();
         }
 
         private void LoadConfig()
